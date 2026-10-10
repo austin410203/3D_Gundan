@@ -101,3 +101,39 @@ body.touch #emList button { display: block; width: 100%; font-size: 10px; paddin
 .maps { display: flex; gap: 10px; justify-content: center; margin: 10px 0 4px; }
 .mapb { border: 3px solid #cfd8dc; background: #fff; border-radius: 12px; padding: 8px 18px; font: inherit; font-weight: 800; font-size: 16px; color: #1d2a44; cursor: pointer; }
 .mapb.sel { border-color: #e53935; background: #fff3e0; }
+
+/* ---- 2.5D story mode ---- */
+#boss { display: none; }
+#boss.show { display: block; }
+#minimap { width: 300px !important; height: 74px !important; }
+body.touch #minimap { width: 190px !important; height: 48px !important; }
+#objective { position: absolute; top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); max-width: 300px; background: rgba(18,30,58,.55); border-left: 4px solid #ffd54f; border-radius: 8px; padding: 6px 12px; font-size: 14px; font-weight: 700; }
+#objective:empty { display: none; }
+#objective b { display: block; font-size: 11px; color: #ffd54f; letter-spacing: .2em; }
+#objective.pulse { animation: objPulse .8s ease-out; }
+@keyframes objPulse { 0% { transform: scale(1.12); background: rgba(255,213,79,.6); } 100% { transform: scale(1); } }
+body.touch #objective { font-size: 11px; max-width: 200px; padding: 4px 8px; }
+#emotes { top: 58%; }
+#prompt { position: absolute; transform: translate(-50%, -100%); background: rgba(255,255,255,.95); color: #1d2a44; padding: 4px 10px; border-radius: 10px; font-weight: 800; font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .15s; text-shadow: none; box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+#prompt.show { opacity: 1; }
+#prompt kbd { background: #1d2a44; color: #fff; border-radius: 5px; padding: 0 6px; margin-right: 4px; font-family: inherit; }
+
+#dialog { position: fixed; z-index: 15; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 30px); width: min(760px, 94vw); min-height: 120px; display: flex; gap: 14px; align-items: flex-start; background: rgba(255, 252, 244, .97); color: #1d2a44; border: 3px solid #1d2a44; border-radius: 18px; padding: 14px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 0 0 3px #ffe9b0; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; cursor: pointer; }
+#dialog.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+#dialog.narr { background: rgba(20, 28, 48, .92); color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.35); font-style: italic; }
+#dlgFace { flex: 0 0 84px; height: 84px; border-radius: 14px; background: radial-gradient(circle at 50% 35%, #bfe3ff, #4f8fd8); display: flex; align-items: center; justify-content: center; font-size: 46px; overflow: hidden; }
+#dlgFace img { width: 100%; height: 100%; object-fit: cover; }
+.dlg-body { flex: 1; min-width: 0; }
+#dlgName { display: inline-block; background: #e53935; color: #fff; font-weight: 900; font-size: 14px; padding: 2px 12px; border-radius: 8px; margin-bottom: 6px; }
+#dlgText { font-size: 17px; line-height: 1.6; min-height: 54px; }
+#dlgChoices { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+#dlgChoices button { text-align: left; font: inherit; font-weight: 700; font-size: 15px; padding: 7px 12px; border-radius: 10px; border: 2px solid #1d2a44; background: #fff; color: #1d2a44; cursor: pointer; }
+#dlgChoices button:hover { background: #fff3c4; }
+#dlgNext { position: absolute; right: 16px; bottom: 8px; font-size: 14px; animation: nextBob .8s infinite; }
+@keyframes nextBob { 50% { transform: translateY(4px); } }
+body.touch #dialog { min-height: 86px; padding: 8px 12px; bottom: 6px; }
+body.touch #dlgFace { flex-basis: 56px; height: 56px; font-size: 32px; }
+body.touch #dlgText { font-size: 14px; min-height: 40px; }
+body.dlg #touch, body.dlg #card, body.dlg #emotes { visibility: hidden; }
+.b-interact { width: 58px; height: 58px; right: 150px !important; bottom: 60px !important; display: none; background: rgba(255, 213, 79, .7) !important; color: #3b2a00 !important; text-shadow: none !important; }
+.b-interact.ready { display: block; }

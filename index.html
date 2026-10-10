@@ -20,6 +20,7 @@
       <button data-b="run" class="b-run">跑</button>
       <button data-b="switch" class="b-switch">⇄</button>
       <button data-b="emote" class="b-emote">★</button>
+      <button data-b="interact" class="b-interact">互動</button>
     </div>
   </div>
 
@@ -27,7 +28,7 @@
     <div id="boss">
       <div class="boss-name">外星巨獸 <small>ALIEN BEAST</small></div>
       <div class="bar"><i id="bossHp"></i></div>
-      <div class="city">城市完整度 <b id="cityPct">100%</b></div>
+      <div class="city">河岸住宅完整度 <b id="cityPct">100%</b></div>
     </div>
     <canvas id="minimap"></canvas>
 
@@ -51,9 +52,17 @@
       <ol id="emList"></ol>
     </div>
 
-    <div id="hint">WASD 移動 · Shift 奔跑 · 空白 跳躍 · Ctrl 翻滾 · 左鍵 攻擊 · Tab 切換角色 · 1–9 動作 · 0 換頁 · 滾輪 鏡頭遠近</div>
+    <div id="hint">WASD 移動 · Shift 奔跑 · 空白 跳躍 · Ctrl 翻滾 · 左鍵 攻擊 · E 互動 · Tab 切換 · 1–9 動作 · 0 換頁</div>
+    <div id="objective"></div>
+    <div id="prompt"></div>
     <div id="banner"></div>
     <div id="dmgLayer"></div>
+  </div>
+
+  <div id="dialog">
+    <div id="dlgFace"></div>
+    <div class="dlg-body"><div id="dlgName"></div><div id="dlgText"></div><div id="dlgChoices"></div></div>
+    <div id="dlgNext">▼</div>
   </div>
 
   <div id="overlay">
