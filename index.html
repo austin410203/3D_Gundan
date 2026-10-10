@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#5aa8e8" />
+  <title>怪獸襲來 Kaiju Strike</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Touch controls (mobile only) -->
+  <div id="touch">
+    <div id="joy"><div id="joyKnob"></div></div>
+    <div id="btns">
+      <button data-b="attack" class="b-attack">攻擊</button>
+      <button data-b="jump" class="b-jump">跳</button>
+      <button data-b="roll" class="b-roll">滾</button>
+      <button data-b="run" class="b-run">跑</button>
+      <button data-b="switch" class="b-switch">⇄</button>
+      <button data-b="emote" class="b-emote">★</button>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div id="boss">
+      <div class="boss-name">外星巨獸 <small>ALIEN BEAST</small></div>
+      <div class="bar"><i id="bossHp"></i></div>
+      <div class="city">城市完整度 <b id="cityPct">100%</b></div>
+    </div>
+    <canvas id="minimap"></canvas>
+
+    <div id="card">
+      <div id="pMain">
+        <img id="pImg" alt="" />
+        <div class="pinfo">
+          <div id="pName"></div>
+          <div class="bar small"><i id="pHp"></i></div>
+        </div>
+      </div>
+      <div id="pAlt">
+        <img id="aImg" alt="" />
+        <span class="key">TAB</span>
+        <div class="bar tiny"><i id="aHp"></i></div>
+      </div>
+    </div>
+
+    <div id="emotes">
+      <div class="em-head"><span>動作 <b id="emPage"></b></span><button id="emNext">0 換頁 ▶</button></div>
+      <ol id="emList"></ol>
+    </div>
+
+    <div id="hint">WASD 移動 · Shift 奔跑 · 空白 跳躍 · Ctrl 翻滾 · 左鍵 攻擊 · Tab 切換角色 · 1–9 動作 · 0 換頁 · 點擊畫面鎖定滑鼠轉視角（Esc 解除）</div>
+    <div id="banner"></div>
+    <div id="dmgLayer"></div>
+  </div>
+
+  <div id="overlay">
+    <div class="panel" id="loading">
+      <h1>怪獸襲來<small>KAIJU STRIKE</small></h1>
+      <div class="bar load"><i id="loadBar"></i></div>
+      <p id="loadText">載入模型中…</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
