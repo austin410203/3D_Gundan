@@ -37,7 +37,8 @@ document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xcfe6f7, 90, 330);
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1200);
+// 2.5D: fixed side-elevated camera with a narrow lens (flattened perspective)
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 1200);
 
 // sky dome
 const sky = new THREE.Mesh(
@@ -607,9 +608,11 @@ class Hero extends Actor {
     this.comboList = ['box_01', 'box_02', 'box_03', 'front_kick_02', 'front_kick_01'].filter(n => this.has(n)).slice(0, 4);
     this.emoteNames = Object.keys(this.actions).sort();
     this.rollAnim = this.has('dive') ? 'dive' : 'flip';
+    this.side = 1; this.facing = Math.PI / 2;
     this.play('idle');
   }
   get alive() { return !this.dead; }
+  setSide(dx) { this.side = dx >= 0 ? 1 : -1; this.facing = this.side * Math.PI / 2; }
   startAct(type, anim, d, extra = {}) { this.act = { type, anim, t: 0, d, ...extra }; }
 
   tryAttack() {
@@ -626,7 +629,7 @@ class Hero extends Actor {
     // auto-aim at monster if close
     if (monster && monster.alive) {
       const dx = monster.pos.x - this.pos.x, dz = monster.pos.z - this.pos.z;
-      if (Math.hypot(dx, dz) < monster.radius + 6) this.facing = Math.atan2(dx, dz);
+      if (Math.hypot(dx, dz) < monster.radius + 6) this.setSide(dx);
     }
     if (this === active) sfx('whoosh', .7);
   }
@@ -635,7 +638,7 @@ class Hero extends Actor {
     let dx = dir.x, dz = dir.z;
     if (Math.hypot(dx, dz) < .1) { dx = Math.sin(this.facing); dz = Math.cos(this.facing); }
     const l = Math.hypot(dx, dz); dx /= l; dz /= l;
-    this.facing = Math.atan2(dx, dz);
+    if (Math.abs(dx) > .1) this.setSide(dx);
     const target = .7;
     this.play(this.rollAnim, { once: true, speed: this.dur(this.rollAnim) / target, fade: .06 });
     this.startAct('roll', this.rollAnim, target, { dx, dz });
@@ -679,7 +682,7 @@ class Hero extends Actor {
     const reach = m.radius + 2.3 + (kick ? .6 : 0);
     if (d > reach) return;
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    if ((fx * dx + fz * dz) / (d || 1) < .2 && d > m.radius) return;
+    if (dx * this.side < -m.radius * .5) return;
     const base = [9, 10, 14, 22][this.act.idx % 4];
     const dmg = Math.round(base * this.def.dmg * (.9 + Math.random() * .2));
     const hp = new THREE.Vector3(this.pos.x + dx / d * (d - m.radius * .7), 1.5 + Math.random() * 2.5, this.pos.z + dz / d * (d - m.radius * .7));
@@ -727,7 +730,7 @@ class Hero extends Actor {
         const run = inp.run;
         const sp = (run ? 9.5 : 4.6) * this.def.speed * (run ? 1 : Math.max(.5, mv));
         this.vel.set(inp.x / (mv || 1) * sp, 0, inp.z / (mv || 1) * sp);
-        this.facing = angLerp(this.facing, Math.atan2(inp.x, inp.z), 1 - Math.exp(-14 * dt));
+        if (Math.abs(inp.x) > .1) this.setSide(inp.x);
         if (this.grounded && !(this.curName.startsWith('jump') && this.cur.isRunning() && this.vy !== 0))
           this.play(run ? 'run' : 'walk', { speed: run ? 1.05 : .95 * Math.max(.6, mv) });
       } else if (this.grounded) this.play('idle');
@@ -744,7 +747,9 @@ class Hero extends Actor {
       const dx = this.pos.x - monster.pos.x, dz = this.pos.z - monster.pos.z, d = Math.hypot(dx, dz), r = monster.radius * .85;
       if (d < r && d > 0) { this.pos.x = monster.pos.x + dx / d * r; this.pos.z = monster.pos.z + dz / d * r; }
     }
-    this.obj.rotation.y = this.facing;
+    // show a 3/4 profile toward the camera, smoothly turning between left and right
+    this.visYaw = angLerp(this.visYaw ?? this.side * Math.PI * .36, this.side * Math.PI * .36, 1 - Math.exp(-16 * dt));
+    this.obj.rotation.y = this.visYaw;
     this.mixer.update(dt);
   }
 }
@@ -955,7 +960,7 @@ function updateHouses(dt) {
 // =====================================================================
 const keys = new Set(), pressed = new Set();
 let mouseAttack = false, attackHeld = false;
-let camYaw = 0, camPitch = .32, camDist = 9;
+let camYaw = 0, camPitch = .4, camDist = 20;
 addEventListener('keydown', e => {
   if (['Tab', 'Space', 'ControlLeft', 'ControlRight', 'ShiftLeft', 'ShiftRight', 'AltLeft'].includes(e.code)) e.preventDefault();
   audio();
@@ -970,17 +975,16 @@ cv.addEventListener('mousedown', e => {
   audio();
   if (state !== 'play') return;
   if (e.button === 0) {
-    if (document.pointerLockElement !== cv && !IS_TOUCH) cv.requestPointerLock?.();
     mouseAttack = true; attackHeld = true;
   } else if (e.button === 2) rDrag = true;
 });
 addEventListener('mouseup', e => { if (e.button === 2) rDrag = false; if (e.button === 0) attackHeld = false; });
 addEventListener('mousemove', e => {
   if (document.pointerLockElement === cv || rDrag) {
-    camYaw -= e.movementX * .0028; camPitch = Math.max(-.05, Math.min(1.25, camPitch + e.movementY * .0022));
+    /* 2.5D: camera angle is fixed */
   }
 });
-cv.addEventListener('wheel', e => { camDist = Math.max(4, Math.min(26, camDist * (1 + Math.sign(e.deltaY) * .1))); }, { passive: true });
+cv.addEventListener('wheel', e => { camDist = Math.max(14, Math.min(40, camDist * (1 + Math.sign(e.deltaY) * .1))); }, { passive: true });
 
 // --- touch controls
 const touch = { x: 0, y: 0, joyId: null, camId: null, lx: 0, ly: 0, run: false, edge: new Set(), attackHold: false };
@@ -1002,7 +1006,7 @@ touchEl.addEventListener('pointermove', e => {
     if (l > JR) { dx *= JR / l; dy *= JR / l; }
     knob.style.transform = `translate(${dx}px,${dy}px)`; touch.x = dx / JR; touch.y = dy / JR;
   } else if (e.pointerId === touch.camId) {
-    camYaw -= (e.clientX - touch.lx) * .006; camPitch = Math.max(-.05, Math.min(1.25, camPitch + (e.clientY - touch.ly) * .004));
+    /* 2.5D: camera angle is fixed */
     touch.lx = e.clientX; touch.ly = e.clientY;
   }
 });
@@ -1090,7 +1094,7 @@ function aiInput(h, dt) {
   }
   if (md < 26 && pd < 40) {
     if (md > m.radius + 1.8) { inp.x = m.pos.x - h.pos.x; inp.z = m.pos.z - h.pos.z; inp.run = md > 8; }
-    else if (h.aiAtk <= 0) { h.facing = Math.atan2(m.pos.x - h.pos.x, m.pos.z - h.pos.z); inp.attack = true; h.aiAtk = .9; }
+    else if (h.aiAtk <= 0) { h.setSide(m.pos.x - h.pos.x); inp.attack = true; h.aiAtk = .9; }
   } else if (pd > 4.5) { inp.x = active.pos.x - h.pos.x; inp.z = active.pos.z - h.pos.z; inp.run = pd > 10; }
   const l = Math.hypot(inp.x, inp.z); if (l > 1) { inp.x /= l; inp.z /= l; }
   return inp;
@@ -1218,10 +1222,10 @@ function startScreen() {
     <p>外星巨獸正在破壞${MAP === 'desert' ? '沙漠綠洲聚落' : '城市'}！選擇戰場與英雄，與夥伴一起擊退牠。</p>
     <div class="maps"><button class="mapb ${MAP === 'city' ? 'sel' : ''}" data-m="city">🏙 城市</button><button class="mapb ${MAP === 'desert' ? 'sel' : ''}" data-m="desert">🏜 沙漠</button></div>
     <div class="picks">${HERO_DEFS.map((d, i) => `<button class="pick ${i === 0 ? 'sel' : ''}" data-i="${i}"><img src="${portraits[d.key]}" alt=""><b>${d.name}</b><span>${d.title}</span></button>`).join('')}</div>
-    ${IS_TOUCH ? `<p style="font-size:13px">左側拖曳＝移動搖桿 · 右側拖曳＝轉視角<br>右下按鈕：攻擊 / 跳 / 滾 / 跑 / ⇄ 切換 / ★ 動作</p>` : `
+    ${IS_TOUCH ? `<p style="font-size:13px">左側拖曳＝移動搖桿（左右移動、上下縱深）<br>右下按鈕：攻擊 / 跳 / 滾 / 跑 / ⇄ 切換 / ★ 動作</p>` : `
     <div class="keys"><span><kbd>WASD</kbd> 移動</span><span><kbd>Shift</kbd> 奔跑</span><span><kbd>空白</kbd> 跳躍</span><span><kbd>Ctrl</kbd> 翻滾（無敵）</span>
     <span><kbd>左鍵</kbd> 攻擊（連按連段）</span><span><kbd>Tab</kbd> 切換角色</span><span><kbd>1–9</kbd> 動作展示</span><span><kbd>0</kbd> 動作換頁</span>
-    <span><kbd>滑鼠</kbd> 轉視角</span><span><kbd>滾輪</kbd> 縮放</span></div>`}
+    <span><kbd>A / D</kbd> 左右移動</span><span><kbd>W / S</kbd> 縱深移動</span><span><kbd>滾輪</kbd> 鏡頭遠近</span></div>`}
     <button class="go" id="go">出擊！</button></div>`;
   overlay.querySelectorAll('.pick').forEach(b => b.onclick = () => { pick = +b.dataset.i; overlay.querySelectorAll('.pick').forEach(x => x.classList.toggle('sel', x === b)); });
   overlay.querySelectorAll('.mapb').forEach(b => b.onclick = () => { if (b.dataset.m === MAP) return; const u = new URL(location.href); u.searchParams.set('map', b.dataset.m); location.href = u.toString(); });
@@ -1230,7 +1234,6 @@ function startScreen() {
     active = allHeroes[pick]; renderEmotes(); updateCard();
     overlay.classList.add('hidden'); state = 'play';
     monster.setState('intro');
-    if (!IS_TOUCH) cv.requestPointerLock?.();
   };
   state = 'menu';
 }
@@ -1253,7 +1256,7 @@ async function load() {
   HERO_DEFS.forEach((d, i) => { portraits[d.key] = makePortrait(heroGltfs[i]); });
   allHeroes = HERO_DEFS.map((d, i) => new Hero(d, heroGltfs[i]));
   if (MAP === 'desert') { allHeroes[0].pos.set(-1.5, 0, 16); allHeroes[1].pos.set(1.5, 0, 17.5); } else { allHeroes[0].pos.set(-1.5, 0, 30); allHeroes[1].pos.set(1.5, 0, 31.5); }
-  allHeroes.forEach(h => { h.facing = Math.PI; });
+  allHeroes.forEach(h => h.setSide(1));
   monster = new Monster(monGltf);
   monster.pos.set(0, groundAt(0, -78), -78); monster.facing = 0;
   active = allHeroes[0];
@@ -1297,7 +1300,7 @@ function frame() {
   // pull the camera back & up when fighting the giant so it stays framed
   const md = monster?.alive ? Math.hypot(monster.pos.x - active.pos.x, monster.pos.z - active.pos.z) : 99;
   combatZoom += ((md < 30 ? 1 : 0) - combatZoom) * (1 - Math.exp(-2 * dt));
-  const effDist = camDist + combatZoom * 6, effPitch = Math.max(camPitch, combatZoom * .38);
+  const effDist = camDist + combatZoom * 14, effPitch = camPitch + combatZoom * .05;
   const cp = Math.cos(effPitch);
   camera.position.set(camTarget.x + Math.sin(camYaw) * cp * effDist, camTarget.y + Math.sin(effPitch) * effDist + .4, camTarget.z + Math.cos(camYaw) * cp * effDist);
   if (camera.position.y < .4) camera.position.y = .4;
