@@ -21,6 +21,7 @@ if (IS_TOUCH) document.body.classList.add('touch');
 
 
 const DEBUG = new URLSearchParams(location.search);
+const MAP = DEBUG.get('map') === 'desert' ? 'desert' : 'city';
 // =====================================================================
 //  RENDERER / SCENE
 // =====================================================================
@@ -49,8 +50,9 @@ const sky = new THREE.Mesh(
   })
 );
 scene.add(sky);
+if (MAP === 'desert') { scene.fog.color.set(0xe8dcc4); scene.fog.near = 70; scene.fog.far = 360; sky.material.uniforms.top.value.set(0x6fa6d6); sky.material.uniforms.hor.value.set(0xeee6d6); }
 
-const hemi = new THREE.HemisphereLight(0xe3f2ff, 0x6f8a4a, 1.25);
+const hemi = new THREE.HemisphereLight(0xe3f2ff, MAP === 'desert' ? 0xc8a46a : 0x6f8a4a, 1.25);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
 sun.castShadow = true;
@@ -293,6 +295,142 @@ function buildScenery() {
     const a = Math.random() * Math.PI * 2, r = 120 + Math.random() * 300;
     s.position.set(Math.cos(a) * r, 70 + Math.random() * 70, Math.sin(a) * r);
     const k = 50 + Math.random() * 60; s.scale.set(k, k * .55, 1); scene.add(s);
+  }
+}
+
+// =====================================================================
+//  DESERT MAP
+// =====================================================================
+const mapFeatures = []; // {x,z,r} for minimap (rocks / mesas)
+const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function duneHeight(x, z) {
+  const h = 3.2 * Math.sin(x * .026 + Math.sin(z * .021) * 1.6) + 2.2 * Math.sin(z * .043 + x * .011) + 1.1 * Math.sin((x + z) * .071) + 3.5;
+  const r = Math.hypot(x, z - 4);
+  return Math.max(0, h) * smooth(30, 52, r);
+}
+function groundAt(x, z) { return MAP === 'desert' ? duneHeight(x, z) : 0; }
+
+const sandTex = canvasTex(512, (g, s) => {
+  g.fillStyle = '#dcc189'; g.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 2) {
+    for (let x = 0; x < s; x += 2) {
+      const w = Math.sin((y + Math.sin(x * .045) * 14 + Math.sin(x * .013) * 22) * .38);
+      const n = Math.random() * 10;
+      const l = w > .55 ? 22 : w < -.7 ? -26 : 0;
+      g.fillStyle = `rgb(${220 + l + n | 0},${193 + l + n | 0},${137 + l * .8 + n | 0})`; g.fillRect(x, y, 2, 2);
+    }
+  }
+});
+sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping; sandTex.repeat.set(40, 40); sandTex.anisotropy = 8;
+
+function buildDesertGround() {
+  const geo = new THREE.PlaneGeometry(700, 700, 220, 220); geo.rotateX(-Math.PI / 2);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, duneHeight(p.getX(i), p.getZ(i)));
+  geo.computeVertexNormals();
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1, metalness: 0 }));
+  ground.receiveShadow = true; scene.add(ground);
+}
+function buildDesertScenery() {
+  const rockMats = [new THREE.MeshStandardMaterial({ color: 0xc9a46b, flatShading: true, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0xb48c57, flatShading: true, roughness: 1 })];
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const freeSpot = (minR) => { for (let k = 0; k < 40; k++) { const x = rand(-WORLD + 8, WORLD - 8), z = rand(-WORLD + 8, WORLD - 8); if (Math.hypot(x, z - 4) > minR && Math.hypot(x, z + 78) > 16 && !mapFeatures.some(f => Math.hypot(f.x - x, f.z - z) < f.r + 10)) return [x, z]; } return null; };
+  // tall pillar mesas (wider at the top, like wind-carved hoodoos)
+  for (let i = 0; i < 14; i++) {
+    const s = freeSpot(40); if (!s) continue; const [x, z] = s;
+    const r = rand(2.5, 4.5), h = rand(10, 24);
+    const g = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.25, h, 6), rockMats[i % 2]); stem.position.y = h / 2; g.add(stem);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.55, r * 1.1, h * .22, 6), rockMats[(i + 1) % 2]); cap.position.y = h + h * .09; cap.rotation.y = .4; g.add(cap);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+    g.position.set(x, groundAt(x, z) - 1, z); g.rotation.set(rand(-.06, .06), rand(0, 6), rand(-.06, .06)); scene.add(g);
+    addCollider(x, z, r * .95, r * .95); mapFeatures.push({ x, z, r: r * 1.2 });
+  }
+  // big boulders / slanted slabs
+  for (let i = 0; i < 18; i++) {
+    const s = freeSpot(38); if (!s) continue; const [x, z] = s;
+    const r = rand(2, 6);
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMats[i % 2]);
+    m.scale.set(rand(.8, 1.6), rand(.5, 1.1), rand(.8, 1.4)); m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
+    m.position.set(x, groundAt(x, z) + r * .2, z); m.castShadow = m.receiveShadow = true; scene.add(m);
+    addCollider(x, z, r * .8, r * .8); mapFeatures.push({ x, z, r });
+  }
+  // ancient ruins: broken walls, arches, half-buried rings
+  const ruinMat = new THREE.MeshStandardMaterial({ color: 0xd6bb88, flatShading: true, roughness: 1 });
+  for (let i = 0; i < 10; i++) {
+    const s = freeSpot(42); if (!s) continue; const [x, z] = s; const gy = groundAt(x, z);
+    const kind = i % 3; const g = new THREE.Group();
+    if (kind === 0) { const w = rand(6, 12), h = rand(2.5, 5); const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1.6), ruinMat); b.position.y = h / 2 - .6; g.add(b); addCollider(x, z, w / 2, w / 2 * .2 + .8); }
+    else if (kind === 1) { const ring = new THREE.Mesh(new THREE.TorusGeometry(3.4, .8, 6, 14, Math.PI), ruinMat); ring.position.y = -.4; g.add(ring); }
+    else { for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.7, .8, rand(2, 6), 8), ruinMat); c.position.set(k * 3 - 3, 1, 0); c.rotation.z = k === 2 ? 1.2 : 0; g.add(c); } addCollider(x, z, 4, 1); }
+    g.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+    g.position.set(x, gy, z); g.rotation.y = kind === 0 ? 0 : rand(0, 6); scene.add(g); mapFeatures.push({ x, z, r: 4 });
+  }
+  // distant dune horizon + far mesas
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2, r = 230 + Math.random() * 100, h = 15 + Math.random() * 40;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rand(8, 22), rand(14, 30), h, 6), rockMats[i % 2]);
+    m.position.set(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r); scene.add(m);
+  }
+  // floating castle
+  const castle = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: 0x6d5a45, flatShading: true, roughness: .9 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x3c3128, flatShading: true, roughness: .9 });
+  const island = new THREE.Mesh(new THREE.ConeGeometry(30, 34, 9), dark); island.rotation.x = Math.PI; island.position.y = -17; castle.add(island);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 4, 9), stone); castle.add(base);
+  const towers = [[0, 0, 7, 40], [-12, 5, 4, 26], [12, 4, 4, 28], [-6, -12, 3.5, 22], [8, -11, 3.5, 24], [-18, -6, 3, 18], [18, -6, 3, 17], [0, 14, 4.5, 20]];
+  for (const [x, z, r, h] of towers) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.15, h, 8), stone); t.position.set(x, h / 2 + 2, z); castle.add(t);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.3, h * .45, 8), dark); roof.position.set(x, h + 2 + h * .22, z); castle.add(roof);
+  }
+  for (const s of [-1, 1]) { const wing = new THREE.Mesh(new THREE.BoxGeometry(22, 2, 6), dark); wing.position.set(s * 36, -2, 0); wing.rotation.z = s * .15; castle.add(wing); }
+  castle.position.set(-30, 95, -260); castle.scale.setScalar(1.1); scene.add(castle);
+  for (let i = 0; i < 9; i++) {
+    const c = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false }));
+    c.position.set(-30 + (Math.random() - .5) * 70, 62 + Math.random() * 8, -260 + (Math.random() - .5) * 30); c.scale.set(45, 22, 1); scene.add(c);
+  }
+  floatingCastle = castle;
+  // soft clouds
+  for (let i = 0; i < 18; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: .7 }));
+    const a = Math.random() * Math.PI * 2, r = 160 + Math.random() * 300;
+    s.position.set(Math.cos(a) * r, 90 + Math.random() * 60, Math.sin(a) * r); const k = 60 + Math.random() * 70; s.scale.set(k, k * .4, 1); scene.add(s);
+  }
+}
+let floatingCastle = null;
+function buildDesertVillage(houseGltf) {
+  const tpl = houseGltf.scene;
+  tpl.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  tpl.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(tpl), size = b.getSize(new THREE.Vector3());
+  const s = HOUSE_W / Math.max(size.x, size.z);
+  const hx = size.x * s / 2, hz = size.z * s / 2, hy = size.y * s;
+  const spots = [[-26, -10], [-26, 16], [26, -10], [26, 16], [-10, -24], [12, -24], [-12, 32], [12, 32]];
+  const sandWall = toon(0xc8a878);
+  for (const [cx, cz] of spots) {
+    const g = new THREE.Group(); const m = tpl.clone(); m.scale.setScalar(s);
+    m.position.set(-(b.min.x + b.max.x) / 2 * s, -b.min.y * s, -(b.min.z + b.max.z) / 2 * s); g.add(m);
+    g.position.set(cx, 0, cz);
+    g.rotation.y = Math.abs(cx) > Math.abs(cz) ? (cx > 0 ? -Math.PI / 2 : Math.PI / 2) : (cz > 0 ? Math.PI : 0);
+    scene.add(g);
+    const rotated = Math.abs(cx) > Math.abs(cz);
+    const house = { group: g, model: m, x: cx, z: cz, hx: rotated ? hz : hx, hz: rotated ? hx : hz, h: hy, hp: 100, alive: true, shake: 0, collapse: -1, emit: 0 };
+    house.col = addCollider(cx, cz, house.hx * .92, house.hz * .92, house);
+    houses.push(house);
+    // low adobe wall stub beside each house
+    const w = new THREE.Mesh(new THREE.BoxGeometry(5, 1.2, .6), sandWall); w.position.set(cx + (rotated ? 0 : 8.5), .6, cz + (rotated ? 8.5 : 0)); if (rotated) w.rotation.y = Math.PI / 2;
+    w.castShadow = true; scene.add(w);
+  }
+  // oasis pool + palms in the centre
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(6, 24), new THREE.MeshStandardMaterial({ color: 0x3fa7c9, roughness: .15, metalness: .1 }));
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, .05, 4); scene.add(pool); mapFeatures.push({ x: 0, z: 4, r: 6, water: true });
+  const trunkMat = toon(0x8a6a44), leafMat = toon(0x5e9a3c);
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2 + .3, x = Math.cos(a) * 8.5, z = 4 + Math.sin(a) * 8.5;
+    const p = new THREE.Group(); const h = 6 + Math.random() * 2;
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(.2, .32, h, 6), trunkMat); tr.position.y = h / 2; tr.rotation.z = (Math.random() - .5) * .25; p.add(tr);
+    for (let k = 0; k < 6; k++) { const l = new THREE.Mesh(new THREE.ConeGeometry(.5, 4, 4), leafMat); l.position.set(Math.cos(k) * 1.6, h - .3, Math.sin(k) * 1.6); l.rotation.set(Math.sin(k) * 1.3, 0, -Math.cos(k) * 1.3); p.add(l); }
+    p.traverse(o => { if (o.isMesh) o.castShadow = true; }); p.position.set(x, 0, z); scene.add(p); addCollider(x, z, .35, .35);
   }
 }
 
@@ -553,7 +691,7 @@ class Hero extends Actor {
     // gravity
     if (!this.grounded) {
       this.vy -= 22 * dt; this.pos.y += this.vy * dt;
-      if (this.pos.y <= 0) { this.pos.y = 0; this.vy = 0; this.grounded = true; }
+      const gh = groundAt(this.pos.x, this.pos.z); if (this.pos.y <= gh) { this.pos.y = gh; this.vy = 0; this.grounded = true; }
     }
     this.kb.multiplyScalar(Math.exp(-6 * dt));
     if (this.dead) { this.pos.addScaledVector(this.kb, dt); this.mixer.update(dt); return; }
@@ -600,6 +738,7 @@ class Hero extends Actor {
     this.pos.x += (this.vel.x + this.kb.x) * dt;
     this.pos.z += (this.vel.z + this.kb.z) * dt;
     resolveCollision(this.pos, .45);
+    if (this.grounded) this.pos.y = groundAt(this.pos.x, this.pos.z);
     // can't walk through the monster
     if (monster && monster.alive) {
       const dx = this.pos.x - monster.pos.x, dz = this.pos.z - monster.pos.z, d = Math.hypot(dx, dz), r = monster.radius * .85;
@@ -674,7 +813,7 @@ class Monster extends Actor {
       const cx = Math.max(h.col.minX, Math.min(ap.x, h.col.maxX)), cz = Math.max(h.col.minZ, Math.min(ap.z, h.col.maxZ));
       if (Math.hypot(ap.x - cx, ap.z - cz) < 5) damageHouse(h, 38);
     }
-    for (const h of allHeroes) if (h.alive && Math.hypot(h.pos.x - ap.x, h.pos.z - ap.z) < 6.5 && h.pos.y < 4) h.hurt(16 + Math.random() * 6, this.pos.x, this.pos.z, 13);
+    for (const h of allHeroes) if (h.alive && Math.hypot(h.pos.x - ap.x, h.pos.z - ap.z) < 6.5 && h.pos.y - groundAt(h.pos.x, h.pos.z) < 4) h.hurt(16 + Math.random() * 6, this.pos.x, this.pos.z, 13);
     spawnDebris(ap.x, 1, ap.z, 6, 7, .5);
     for (let i = 0; i < 4; i++) spawnSprite('smoke', ap.x + (Math.random() - .5) * 5, .5, ap.z + (Math.random() - .5) * 5, { size: 4, life: 1.6, grow: 2, opacity: .6, color: 0xa89a88 });
     const d = Math.hypot(active.pos.x - ap.x, active.pos.z - ap.z); addShake(Math.max(0, .9 - d / 40)); sfx('boom', Math.max(.2, 1 - d / 60));
@@ -685,7 +824,7 @@ class Monster extends Actor {
     this.obj.rotation.y = this.facing;
     if (!this.alive) {
       this.t += dt;
-      if (this.t > 1.2) { this.obj.rotation.z = Math.min(Math.PI / 2.2, (this.t - 1.2) * .9); this.pos.y = -Math.min(4, (this.t - 1.2) * 1.2); }
+      if (this.t > 1.2) { this.obj.rotation.z = Math.min(Math.PI / 2.2, (this.t - 1.2) * .9); this.pos.y = groundAt(this.pos.x, this.pos.z) - Math.min(4, (this.t - 1.2) * 1.2); }
       if (this.t < 4 && Math.random() < .3) explosion(this.pos.x + (Math.random() - .5) * 8, 2 + Math.random() * 10, this.pos.z + (Math.random() - .5) * 8, .5);
       return;
     }
@@ -709,7 +848,7 @@ class Monster extends Actor {
         this.play('run', { speed: .55 });
         const sp = 4.2;
         this.pos.x += Math.sin(this.facing) * sp * dt; this.pos.z += Math.cos(this.facing) * sp * dt;
-        this.pos.x = Math.max(-WORLD + 3, Math.min(WORLD - 3, this.pos.x)); this.pos.z = Math.max(-WORLD + 3, Math.min(WORLD - 3, this.pos.z));
+        this.pos.x = Math.max(-WORLD + 3, Math.min(WORLD - 3, this.pos.x)); this.pos.z = Math.max(-WORLD + 3, Math.min(WORLD - 3, this.pos.z)); this.pos.y = groundAt(this.pos.x, this.pos.z);
         // stomping damages houses it walks through
         for (const h of houses) if (h.alive && Math.abs(h.x - this.pos.x) < h.hx + this.radius * .6 && Math.abs(h.z - this.pos.z) < h.hz + this.radius * .6) damageHouse(h, 30 * dt, true);
         this.stepT -= dt;
@@ -750,9 +889,9 @@ class Monster extends Actor {
         const pulse = 1 + Math.sin(this.t * 40) * .12;
         for (const [b, r] of [[this.beamOuter, 1.25], [this.beamInner, .5]]) { b.visible = true; b.position.copy(m); b.lookAt(this.aim); b.scale.set(r * pulse, r * pulse, len); }
         fxLight.position.copy(this.aim).setY(2); fxLight.intensity = 60 + Math.random() * 30;
-        if (Math.random() < .5) explosion(this.aim.x, Math.max(.5, this.aim.y - 2), this.aim.z, .4);
+        if (Math.random() < .5) explosion(this.aim.x, Math.max(groundAt(this.aim.x, this.aim.z) + .5, this.aim.y - 2), this.aim.z, .4);
         addShake(dt * 2.2);
-        for (const h of allHeroes) if (h.alive && !this.beamHit.has(h) && Math.hypot(h.pos.x - this.aim.x, h.pos.z - this.aim.z) < 2.8 && h.pos.y < 3) {
+        for (const h of allHeroes) if (h.alive && !this.beamHit.has(h) && Math.hypot(h.pos.x - this.aim.x, h.pos.z - this.aim.z) < 2.8 && h.pos.y - groundAt(h.pos.x, h.pos.z) < 3) {
           if (h.act?.type === 'roll') { dmgText(h.pos.clone().setY(2.2), 'MISS', 'miss'); this.beamHit.add(h); continue; }
           this.beamHit.add(h); h.hurt(28, this.aim.x - .01, this.aim.z - .01, 14);
         }
@@ -985,9 +1124,10 @@ function drawMinimap(time) {
   const W = WORLD + 10, tx = x => (x + W) / (W * 2) * S;
   if (!mmBase || mmBase.width !== S) {
     mmBase = document.createElement('canvas'); mmBase.width = mmBase.height = S; const g = mmBase.getContext('2d');
-    g.fillStyle = '#7fae55'; g.fillRect(0, 0, S, S);
+    g.fillStyle = MAP === 'desert' ? '#dcc28c' : '#7fae55'; g.fillRect(0, 0, S, S);
+    for (const f of mapFeatures) { g.fillStyle = f.water ? '#3fa7c9' : '#a9844f'; g.beginPath(); g.arc(tx(f.x), tx(f.z), Math.max(2, tx(f.r) - tx(0)), 0, 7); g.fill(); }
     g.fillStyle = '#d7d9dc';
-    for (const r of ROADS) { g.fillRect(tx(r - ROAD_W / 2), 0, tx(ROAD_W) - tx(0), S); g.fillRect(0, tx(r - ROAD_W / 2), S, tx(ROAD_W) - tx(0)); }
+    if (MAP === 'city') for (const r of ROADS) { g.fillRect(tx(r - ROAD_W / 2), 0, tx(ROAD_W) - tx(0), S); g.fillRect(0, tx(r - ROAD_W / 2), S, tx(ROAD_W) - tx(0)); }
     g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; g.strokeRect(tx(-WORLD), tx(-WORLD), tx(WORLD) - tx(-WORLD), tx(WORLD) - tx(-WORLD));
   }
   mctx.drawImage(mmBase, 0, 0);
@@ -1075,7 +1215,8 @@ function endGame(win, msg) {
 function startScreen() {
   let pick = 0;
   overlay.innerHTML = `<div class="panel"><h1>怪獸襲來<small>KAIJU STRIKE</small></h1>
-    <p>外星巨獸正在破壞城市！選擇你的英雄，與夥伴一起擊退牠。</p>
+    <p>外星巨獸正在破壞${MAP === 'desert' ? '沙漠綠洲聚落' : '城市'}！選擇戰場與英雄，與夥伴一起擊退牠。</p>
+    <div class="maps"><button class="mapb ${MAP === 'city' ? 'sel' : ''}" data-m="city">🏙 城市</button><button class="mapb ${MAP === 'desert' ? 'sel' : ''}" data-m="desert">🏜 沙漠</button></div>
     <div class="picks">${HERO_DEFS.map((d, i) => `<button class="pick ${i === 0 ? 'sel' : ''}" data-i="${i}"><img src="${portraits[d.key]}" alt=""><b>${d.name}</b><span>${d.title}</span></button>`).join('')}</div>
     ${IS_TOUCH ? `<p style="font-size:13px">左側拖曳＝移動搖桿 · 右側拖曳＝轉視角<br>右下按鈕：攻擊 / 跳 / 滾 / 跑 / ⇄ 切換 / ★ 動作</p>` : `
     <div class="keys"><span><kbd>WASD</kbd> 移動</span><span><kbd>Shift</kbd> 奔跑</span><span><kbd>空白</kbd> 跳躍</span><span><kbd>Ctrl</kbd> 翻滾（無敵）</span>
@@ -1083,6 +1224,7 @@ function startScreen() {
     <span><kbd>滑鼠</kbd> 轉視角</span><span><kbd>滾輪</kbd> 縮放</span></div>`}
     <button class="go" id="go">出擊！</button></div>`;
   overlay.querySelectorAll('.pick').forEach(b => b.onclick = () => { pick = +b.dataset.i; overlay.querySelectorAll('.pick').forEach(x => x.classList.toggle('sel', x === b)); });
+  overlay.querySelectorAll('.mapb').forEach(b => b.onclick = () => { if (b.dataset.m === MAP) return; const u = new URL(location.href); u.searchParams.set('map', b.dataset.m); location.href = u.toString(); });
   $('go').onclick = () => {
     audio();
     active = allHeroes[pick]; renderEmotes(); updateCard();
@@ -1102,19 +1244,21 @@ async function load() {
     if (e.total) prog[i] = e.loaded / e.total;
     const p = prog.reduce((a, b) => a + b, 0) / files.length; $('loadBar').style.width = (p * 100) + '%';
   })));
-  $('loadText').textContent = '建立城市中…';
+  $('loadText').textContent = MAP === 'desert' ? '建立沙漠中…' : '建立城市中…';
   await new Promise(r => setTimeout(r, 30));
   const heroGltfs = res.slice(0, HERO_DEFS.length), monGltf = res[HERO_DEFS.length], houseGltf = res[HERO_DEFS.length + 1];
 
-  buildGround(); buildHouses(houseGltf); buildPolesAndWires(); buildScenery();
+  if (MAP === 'desert') { buildDesertGround(); buildDesertVillage(houseGltf); buildDesertScenery(); }
+  else { buildGround(); buildHouses(houseGltf); buildPolesAndWires(); buildScenery(); }
   HERO_DEFS.forEach((d, i) => { portraits[d.key] = makePortrait(heroGltfs[i]); });
   allHeroes = HERO_DEFS.map((d, i) => new Hero(d, heroGltfs[i]));
-  allHeroes[0].pos.set(-1.5, 0, 30); allHeroes[1].pos.set(1.5, 0, 31.5);
+  if (MAP === 'desert') { allHeroes[0].pos.set(-1.5, 0, 16); allHeroes[1].pos.set(1.5, 0, 17.5); } else { allHeroes[0].pos.set(-1.5, 0, 30); allHeroes[1].pos.set(1.5, 0, 31.5); }
   allHeroes.forEach(h => { h.facing = Math.PI; });
   monster = new Monster(monGltf);
-  monster.pos.set(0, 0, -78); monster.facing = 0;
+  monster.pos.set(0, groundAt(0, -78), -78); monster.facing = 0;
   active = allHeroes[0];
   camYaw = 0;
+  if (MAP === 'desert') document.querySelector('.city').firstChild.textContent = '聚落完整度 ';
   updateCity(); renderEmotes(); updateCard();
   console.log('loaded', performance.now()|0);
   startScreen();
@@ -1145,6 +1289,7 @@ function frame() {
     pressed.clear();
   }
   updateHouses(dt);
+  if (floatingCastle) { floatingCastle.position.y = 95 + Math.sin(time * .4) * 2; floatingCastle.rotation.y += dt * .01; }
   updateParticles(dt);
 
   // camera

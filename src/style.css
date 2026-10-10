@@ -98,3 +98,6 @@ body.touch #emList button { display: block; width: 100%; font-size: 10px; paddin
 .b-emote { width: 42px; height: 42px; right: 100px; bottom: 136px; }
 
 @media (max-width: 1150px) { #hint { display: none; } }
+.maps { display: flex; gap: 10px; justify-content: center; margin: 10px 0 4px; }
+.mapb { border: 3px solid #cfd8dc; background: #fff; border-radius: 12px; padding: 8px 18px; font: inherit; font-weight: 800; font-size: 16px; color: #1d2a44; cursor: pointer; }
+.mapb.sel { border-color: #e53935; background: #fff3e0; }
